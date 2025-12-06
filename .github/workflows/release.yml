@@ -30,7 +30,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser
-          version: latest
+          version: v2
           args: release --clean
         env:
           HOMEBREW_TOKEN: ${{ secrets.HOMEBREW_TOKEN }}
