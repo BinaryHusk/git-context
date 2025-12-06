@@ -278,6 +278,7 @@ profiles:
 | `push`        | Push settings                 | \<key\>: \<value\>     |
 | `rebase`      | Rebase settings               | \<key\>: \<value\>     |
 | `rerere`      | Rerere settings               | \<key\>: \<value\>     |
+| `pager`       | Pager settings                | \<key\>: \<value\>     |
 | `tag`         | Tag settings                  | \<key\>: \<value\>     |
 | `url`         | URL settings                  | \<key\>: \<value\>     |
 | `user`        | User settings                 | \<key\>: \<value\>     |

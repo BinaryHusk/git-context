@@ -23,6 +23,7 @@ var ConfigSections = []string{
 	"push",
 	"rebase",
 	"rerere",
+	"pager",
 	"tag",
 }
 
@@ -70,6 +71,8 @@ func (p *Profile) GetSection(name string) map[string]any {
 		return p.Rebase
 	case "rerere":
 		return p.Rerere
+	case "pager":
+		return p.Pager
 	case "tag":
 		return p.Tag
 	default:
@@ -121,6 +124,8 @@ func (p *Profile) SetSection(name string, values map[string]any) {
 		p.Rebase = values
 	case "rerere":
 		p.Rerere = values
+	case "pager":
+		p.Pager = values
 	case "tag":
 		p.Tag = values
 	}
