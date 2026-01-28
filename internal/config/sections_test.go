@@ -133,7 +133,12 @@ func TestGetSection(t *testing.T) {
 
 			// Deep compare maps
 			if len(result) != len(tt.expected) {
-				t.Errorf("GetSection(%q) length = %d, want %d", tt.section, len(result), len(tt.expected))
+				t.Errorf(
+					"GetSection(%q) length = %d, want %d",
+					tt.section,
+					len(result),
+					len(tt.expected),
+				)
 
 				return
 			}
@@ -150,14 +155,26 @@ func TestGetSection(t *testing.T) {
 				if expectedMap, ok := expectedValue.(map[string]any); ok {
 					actualMap, ok := actualValue.(map[string]any)
 					if !ok {
-						t.Errorf("GetSection(%q)[%q] type mismatch, got %T, want map[string]any", tt.section, key, actualValue)
+						t.Errorf(
+							"GetSection(%q)[%q] type mismatch, got %T, want map[string]any",
+							tt.section,
+							key,
+							actualValue,
+						)
 
 						continue
 					}
 
 					for k, v := range expectedMap {
 						if actualMap[k] != v {
-							t.Errorf("GetSection(%q)[%q][%q] = %v, want %v", tt.section, key, k, actualMap[k], v)
+							t.Errorf(
+								"GetSection(%q)[%q][%q] = %v, want %v",
+								tt.section,
+								key,
+								k,
+								actualMap[k],
+								v,
+							)
 						}
 					}
 				} else if actualValue != expectedValue {
@@ -212,7 +229,11 @@ func TestSetSection(t *testing.T) {
 			// For unknown sections, result should be nil
 			if tt.section == "unknown" {
 				if result != nil {
-					t.Errorf("SetSection(%q) should not set unknown section, got %v", tt.section, result)
+					t.Errorf(
+						"SetSection(%q) should not set unknown section, got %v",
+						tt.section,
+						result,
+					)
 				}
 
 				return
@@ -225,7 +246,12 @@ func TestSetSection(t *testing.T) {
 			}
 
 			if len(result) != len(tt.values) {
-				t.Errorf("SetSection(%q) length = %d, want %d", tt.section, len(result), len(tt.values))
+				t.Errorf(
+					"SetSection(%q) length = %d, want %d",
+					tt.section,
+					len(result),
+					len(tt.values),
+				)
 
 				return
 			}
@@ -239,7 +265,13 @@ func TestSetSection(t *testing.T) {
 				}
 
 				if actualValue != expectedValue {
-					t.Errorf("SetSection(%q)[%q] = %v, want %v", tt.section, key, actualValue, expectedValue)
+					t.Errorf(
+						"SetSection(%q)[%q] = %v, want %v",
+						tt.section,
+						key,
+						actualValue,
+						expectedValue,
+					)
 				}
 			}
 		})
@@ -331,7 +363,13 @@ func TestGetSetSectionRoundTrip(t *testing.T) {
 				}
 
 				if actualValue != expectedValue {
-					t.Errorf("Section %q key %q = %v, want %v", section, key, actualValue, expectedValue)
+					t.Errorf(
+						"Section %q key %q = %v, want %v",
+						section,
+						key,
+						actualValue,
+						expectedValue,
+					)
 				}
 			}
 		})

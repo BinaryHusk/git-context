@@ -175,6 +175,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 	// Save config
 	cfg.Previous = "work"
+
 	err := cfg.SaveConfig(configFile)
 	if err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)
