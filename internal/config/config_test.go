@@ -174,6 +174,7 @@ func TestSaveAndLoadConfig(t *testing.T) {
 	}
 
 	// Save config
+	cfg.Previous = "work"
 	err := cfg.SaveConfig(configFile)
 	if err != nil {
 		t.Fatalf("SaveConfig failed: %v", err)
@@ -210,6 +211,10 @@ func TestSaveAndLoadConfig(t *testing.T) {
 
 	if len(p.URL) != 1 {
 		t.Errorf("Expected 1 URL rewrite, got %d", len(p.URL))
+	}
+
+	if loadedCfg.Previous != "work" {
+		t.Errorf("Expected previous profile 'work', got '%s'", loadedCfg.Previous)
 	}
 }
 

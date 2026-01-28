@@ -59,6 +59,7 @@ type Config struct {
 	Global   map[string]any      `yaml:"global"`
 	Profiles map[string]*Profile `yaml:"profiles"`
 	Current  string              `yaml:"-"` // Not saved, determined at runtime
+	Previous string              `yaml:"previous,omitempty"`
 }
 
 // NewConfig creates a new empty config.
@@ -67,6 +68,7 @@ func NewConfig() *Config {
 		Global:   make(map[string]any),
 		Profiles: make(map[string]*Profile),
 		Current:  "",
+		Previous: "",
 	}
 }
 

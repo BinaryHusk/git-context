@@ -11,15 +11,15 @@ import (
 )
 
 var switchCmd = &cobra.Command{
-	Use:   "switch [profile-name]",
+	Use:   "switch [profile-name|-]",
 	Short: "Switch to a different profile",
-	Long:  `Switch the active git configuration to a different profile.`,
+	Long:  `Switch the active git configuration to a different profile. Use '-' to return to the previous profile.`,
 	Args:  cobra.ExactArgs(1),
 	RunE:  runSwitch,
 }
 
 func runSwitch(cmd *cobra.Command, args []string) error {
-	profileName := args[0]
+	requestedName := args[0]
 
 	paths, err := config.NewPaths()
 	if err != nil {
@@ -33,6 +33,17 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 		ui.PrintError(fmt.Sprintf("Failed to load config: %v", err))
 
 		return errors.Wrap(err, "failed to load config")
+	}
+
+	profileName := requestedName
+	if requestedName == "-" {
+		if cfg.Previous == "" {
+			ui.PrintWarning("No previous profile to switch to")
+
+			return errors.WithStack(errors.New("no previous profile to switch to"))
+		}
+
+		profileName = cfg.Previous
 	}
 
 	// Check if profile exists
@@ -72,6 +83,10 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 	}
 
 	// Update current profile
+	if cfg.Current != "" && cfg.Current != profileName {
+		cfg.Previous = cfg.Current
+	}
+
 	cfg.Current = profileName
 	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to save config: %v", err))

@@ -91,6 +91,7 @@ git-context --version
 First-time setup:
 
 ```bash
+# Initialize git-context
 git-context init
 ```
 
@@ -99,6 +100,7 @@ This creates `~/.config/git-context/config.yaml`.
 ### Add Your First Profile
 
 ```bash
+# Add a new profile named 'work'
 git-context add work
 ```
 
@@ -112,6 +114,7 @@ You'll be prompted for:
 #### 3. List All Profiles
 
 ```bash
+# List available profiles
 git-context list
 ```
 
@@ -130,7 +133,11 @@ university   andre@university.edu
 #### 4. Switch Between Profiles
 
 ```bash
+# Switch to 'personal' profile
 git-context switch personal
+
+# Switch back to the previous profile
+git-context switch -
 ```
 
 **Output:**
@@ -146,34 +153,37 @@ git-context switch personal
 #### 5. Show Current Profile
 
 ```bash
+# Display the active profile
 git-context current
 ```
 
 #### 6. Show Profile Details
 
 ```bash
+# Show details of 'work' profile
 git-context show work
 ```
 
 #### 7. Remove a Profile
 
 ```bash
+# Remove 'university' profile
 git-context remove university
 ```
 
 ### All Available Commands
 
-| Command                     | Description              |
-| --------------------------- | ------------------------ |
-| `git-context init`          | Initialize configuration |
-| `git-context add <name>`    | Create a new profile     |
-| `git-context switch <name>` | Switch to a profile      |
-| `git-context list`          | List all profiles        |
-| `git-context current`       | Show active profile      |
-| `git-context show <name>`   | Show profile details     |
-| `git-context remove <name>` | Delete a profile         |
-| `git-context --help`        | Show help                |
-| `git-context --version`     | Show version             |
+| Command                       | Description              |
+| ----------------------------- | ------------------------ |
+| `git-context init`            | Initialize configuration |
+| `git-context add <name>`      | Create a new profile     |
+| `git-context switch <name\|->`| Switch to a profile      |
+| `git-context list`            | List all profiles        |
+| `git-context current`         | Show active profile      |
+| `git-context show <name>`     | Show profile details     |
+| `git-context remove <name>`   | Delete a profile         |
+| `git-context --help`          | Show help                |
+| `git-context --version`       | Show version             |
 
 ## Configuration
 
