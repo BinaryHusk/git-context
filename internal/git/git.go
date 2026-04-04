@@ -93,10 +93,10 @@ func buildGitConfig(config map[string]any) string {
 
 	// Write sections
 	for section, values := range sectionMap {
-		content.WriteString(fmt.Sprintf("[%s]\n", section))
+		fmt.Fprintf(&content, "[%s]\n", section)
 
 		for k, v := range values {
-			content.WriteString(fmt.Sprintf("\t%s = %v\n", k, v))
+			fmt.Fprintf(&content, "\t%s = %v\n", k, v)
 		}
 
 		content.WriteString("\n")
