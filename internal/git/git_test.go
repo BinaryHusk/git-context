@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/aanogueira/git-context/internal/config"
 )
 
 func TestNewGit(t *testing.T) {
@@ -480,5 +482,100 @@ func TestWriteRootConfigParseableByGit(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git config rejected file: %v\n%s", err, out)
+	}
+}
+
+func TestRegenerate(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	profilesDir := filepath.Join(tmpDir, "profiles")
+
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatalf("mkdir profiles: %v", err)
+	}
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Name: "Andre", Email: "a@work.com"},
+		Directories: []string{"/Users/x/Mollie/"},
+	}
+	cfg.Profiles["personal"] = &config.Profile{
+		User:        config.UserConfig{Name: "Andre", Email: "a@home.com"},
+		Directories: []string{"/Users/x/projects/personal/"},
+	}
+	cfg.Current = "work"
+
+	rootPath := filepath.Join(tmpDir, ".gitconfig")
+	g := NewGit(rootPath)
+
+	if err := g.Regenerate(cfg, profilesDir); err != nil {
+		t.Fatalf("Regenerate error: %v", err)
+	}
+
+	// Per-profile files exist with expected content.
+	for name, wantEmail := range map[string]string{"work": "a@work.com", "personal": "a@home.com"} {
+		path := filepath.Join(profilesDir, name+".gitconfig")
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+
+		if !strings.Contains(string(data), "email = "+wantEmail) {
+			t.Errorf("%s missing email=%s\n%s", name, wantEmail, data)
+		}
+	}
+
+	// Root manifest references the right files.
+	root, err := os.ReadFile(rootPath)
+	if err != nil {
+		t.Fatalf("read root: %v", err)
+	}
+
+	rootStr := string(root)
+	wantInclude := filepath.Join(profilesDir, "work.gitconfig")
+
+	if !strings.Contains(rootStr, "path = "+wantInclude) {
+		t.Errorf("root missing default include for %q:\n%s", wantInclude, rootStr)
+	}
+
+	if !strings.Contains(rootStr, `gitdir:/Users/x/Mollie/`) {
+		t.Errorf("root missing Mollie includeIf:\n%s", rootStr)
+	}
+
+	if !strings.Contains(rootStr, `gitdir:/Users/x/projects/personal/`) {
+		t.Errorf("root missing personal includeIf:\n%s", rootStr)
+	}
+}
+
+func TestRegenerateNoOpWhenNothingToWrite(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	rootPath := filepath.Join(tmpDir, ".gitconfig")
+	profilesDir := filepath.Join(tmpDir, "profiles")
+
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		t.Fatalf("mkdir profiles: %v", err)
+	}
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{User: config.UserConfig{Name: "X"}}
+	// No Current, no Directories — nothing to write to root manifest.
+
+	g := NewGit(rootPath)
+
+	if err := g.Regenerate(cfg, profilesDir); err != nil {
+		t.Fatalf("Regenerate error: %v", err)
+	}
+
+	if _, err := os.Stat(rootPath); !os.IsNotExist(err) {
+		t.Errorf("expected no root manifest, got err=%v", err)
+	}
+
+	// Per-profile file still gets written, regardless of whether root manifest is.
+	if _, err := os.Stat(filepath.Join(profilesDir, "work.gitconfig")); err != nil {
+		t.Errorf("expected work.gitconfig to exist: %v", err)
 	}
 }

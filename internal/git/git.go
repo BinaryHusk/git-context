@@ -3,9 +3,11 @@ package git
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/aanogueira/git-context/internal/config"
 	"github.com/cockroachdb/errors"
 )
 
@@ -123,6 +125,85 @@ func (g *Git) WriteRootConfig(defaultProfilePath string, assignments map[string]
 	}
 
 	return atomicWrite(g.globalConfigPath, []byte(b.String()))
+}
+
+// Regenerate writes one gitconfig file per profile under `profilesDir`,
+// then writes the root manifest at `g.globalConfigPath`. Called by every
+// mutating command (`switch`, `add` with dirs, `remove`, `dir add/remove`).
+//
+// Per-profile files use the merged (global + profile) configuration so they
+// behave identically to the file `switch` used to write inline.
+//
+// The root manifest is written by WriteRootConfig and may be a no-op if no
+// default profile is set and no directories are assigned.
+func (g *Git) Regenerate(cfg *config.Config, profilesDir string) error {
+	for name := range cfg.Profiles {
+		merged, err := cfg.Merge(name)
+		if err != nil {
+			return errors.Wrapf(err, "failed to merge profile %q", name)
+		}
+
+		path := filepath.Join(profilesDir, name+".gitconfig")
+		if err := g.WriteProfileFile(path, profileToFlatConfig(merged)); err != nil {
+			return errors.Wrapf(err, "failed to write profile file for %q", name)
+		}
+	}
+
+	defaultPath := ""
+	if cfg.Current != "" {
+		defaultPath = filepath.Join(profilesDir, cfg.Current+".gitconfig")
+	}
+
+	assignments := make(map[string]string)
+	for path, profileName := range cfg.AssignmentMap() {
+		assignments[path] = filepath.Join(profilesDir, profileName+".gitconfig")
+	}
+
+	return g.WriteRootConfig(defaultPath, assignments)
+}
+
+// profileToFlatConfig is the same converter that `cmd.profileToGitConfig`
+// uses. Keep them in sync; we host it in the git package because Regenerate
+// needs it without dragging in cmd.
+func profileToFlatConfig(profile *config.Profile) map[string]any {
+	out := make(map[string]any)
+
+	if profile.User.Name != "" {
+		out["user.name"] = profile.User.Name
+	}
+
+	if profile.User.Email != "" {
+		out["user.email"] = profile.User.Email
+	}
+
+	if profile.User.SigningKey != "" {
+		out["user.signingkey"] = profile.User.SigningKey
+	}
+
+	for _, url := range profile.URL {
+		key := fmt.Sprintf("url \"%s\".insteadOf", url.Pattern)
+		out[key] = url.InsteadOf
+	}
+
+	for _, section := range config.ConfigSections {
+		if sectionMap := profile.GetSection(section); sectionMap != nil {
+			flattenInto(out, section, sectionMap)
+		}
+	}
+
+	return out
+}
+
+// flattenInto walks a nested map and writes leaf values keyed by dotted path.
+func flattenInto(out map[string]any, prefix string, values map[string]any) {
+	for k, v := range values {
+		key := prefix + "." + k
+		if m, ok := v.(map[string]any); ok {
+			flattenInto(out, key, m)
+		} else {
+			out[key] = v
+		}
+	}
 }
 
 // buildGitConfig builds git config format from a map of key-value pairs.
