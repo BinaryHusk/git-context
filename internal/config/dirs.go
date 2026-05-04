@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/cockroachdb/errors"
@@ -50,4 +51,31 @@ func NormalizeDir(path string) (string, error) {
 	}
 
 	return path, nil
+}
+
+// LookupDir returns the profile name that owns the given directory path,
+// or ("", false) if no profile claims it. The path must already be in its
+// normalized form.
+func (c *Config) LookupDir(path string) (string, bool) {
+	for name, profile := range c.Profiles {
+		if slices.Contains(profile.Directories, path) {
+			return name, true
+		}
+	}
+
+	return "", false
+}
+
+// AssignmentMap returns a flat path-to-profile map across all profiles.
+// Used to emit the [includeIf] block list in deterministic order.
+func (c *Config) AssignmentMap() map[string]string {
+	out := make(map[string]string)
+
+	for name, profile := range c.Profiles {
+		for _, dir := range profile.Directories {
+			out[dir] = name
+		}
+	}
+
+	return out
 }
