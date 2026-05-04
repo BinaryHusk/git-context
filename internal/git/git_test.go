@@ -579,3 +579,171 @@ func TestRegenerateNoOpWhenNothingToWrite(t *testing.T) {
 		t.Errorf("expected work.gitconfig to exist: %v", err)
 	}
 }
+
+func TestBackupConfigSkipsGeneratedManifest(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	src := filepath.Join(tmpDir, ".gitconfig")
+	dst := filepath.Join(tmpDir, ".gitconfig.bak")
+
+	// Simulate a git-context-generated source by writing the header marker.
+	manifest := rootConfigHeader + "\n[include]\n\tpath = /tmp/x\n"
+	if err := os.WriteFile(src, []byte(manifest), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	g := NewGit(src)
+
+	if err := g.BackupConfig(dst); err != nil {
+		t.Fatalf("BackupConfig error: %v", err)
+	}
+
+	if _, err := os.Stat(dst); !os.IsNotExist(err) {
+		t.Errorf("expected NO backup file when source is a generated manifest, got err=%v", err)
+	}
+}
+
+func TestBackupConfigCopiesUserContent(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	src := filepath.Join(tmpDir, ".gitconfig")
+	dst := filepath.Join(tmpDir, ".gitconfig.bak")
+
+	if err := os.WriteFile(src, []byte("[user]\n\tname = Old\n"), 0o644); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	g := NewGit(src)
+
+	if err := g.BackupConfig(dst); err != nil {
+		t.Fatalf("BackupConfig error: %v", err)
+	}
+
+	data, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("read backup: %v", err)
+	}
+
+	if !strings.Contains(string(data), "name = Old") {
+		t.Errorf("backup missing original content:\n%s", data)
+	}
+}
+
+func TestProfileToFlatConfigCoreFields(t *testing.T) {
+	t.Parallel()
+
+	p := &config.Profile{
+		User: config.UserConfig{
+			Name:       "Andre",
+			Email:      "a@x.com",
+			SigningKey: "ABC123",
+		},
+	}
+
+	got := profileToFlatConfig(p)
+
+	if got["user.name"] != "Andre" {
+		t.Errorf("user.name = %v, want Andre", got["user.name"])
+	}
+
+	if got["user.email"] != "a@x.com" {
+		t.Errorf("user.email = %v, want a@x.com", got["user.email"])
+	}
+
+	if got["user.signingkey"] != "ABC123" {
+		t.Errorf("user.signingkey = %v, want ABC123", got["user.signingkey"])
+	}
+}
+
+func TestProfileToFlatConfigOmitsEmptyUserFields(t *testing.T) {
+	t.Parallel()
+
+	p := &config.Profile{User: config.UserConfig{Name: "Andre"}}
+	got := profileToFlatConfig(p)
+
+	if _, ok := got["user.email"]; ok {
+		t.Error("user.email should not be set when empty")
+	}
+
+	if _, ok := got["user.signingkey"]; ok {
+		t.Error("user.signingkey should not be set when empty")
+	}
+}
+
+func TestProfileToFlatConfigURLRewrites(t *testing.T) {
+	t.Parallel()
+
+	p := &config.Profile{
+		URL: []config.URLConfig{
+			{Pattern: "ssh://git@github.com/", InsteadOf: "https://github.com/"},
+		},
+	}
+
+	got := profileToFlatConfig(p)
+	key := `url "ssh://git@github.com/".insteadOf`
+
+	if got[key] != "https://github.com/" {
+		t.Errorf("URL rewrite key %q = %v, want https://github.com/", key, got[key])
+	}
+}
+
+func TestProfileToFlatConfigNestedSection(t *testing.T) {
+	t.Parallel()
+
+	p := &config.Profile{
+		Delta: map[string]any{
+			"decorations": map[string]any{
+				"file-style": "bold yellow",
+			},
+		},
+	}
+
+	got := profileToFlatConfig(p)
+
+	if got["delta.decorations.file-style"] != "bold yellow" {
+		t.Errorf("delta.decorations.file-style = %v, want 'bold yellow'\nfull map: %#v",
+			got["delta.decorations.file-style"], got)
+	}
+}
+
+func TestFlattenIntoLeafValues(t *testing.T) {
+	t.Parallel()
+
+	out := make(map[string]any)
+	flattenInto(out, "core", map[string]any{
+		"editor":   "nvim",
+		"autocrlf": "input",
+	})
+
+	if out["core.editor"] != "nvim" {
+		t.Errorf("core.editor = %v", out["core.editor"])
+	}
+
+	if out["core.autocrlf"] != "input" {
+		t.Errorf("core.autocrlf = %v", out["core.autocrlf"])
+	}
+}
+
+func TestFlattenIntoRecursesNestedMaps(t *testing.T) {
+	t.Parallel()
+
+	out := make(map[string]any)
+	flattenInto(out, "delta", map[string]any{
+		"decorations": map[string]any{
+			"hunk-header-style": "syntax bold",
+		},
+		"interactive": map[string]any{
+			"keep-plus-minus-markers": true,
+		},
+	})
+
+	if out["delta.decorations.hunk-header-style"] != "syntax bold" {
+		t.Errorf("missing nested key, got map: %#v", out)
+	}
+
+	if out["delta.interactive.keep-plus-minus-markers"] != true {
+		t.Errorf("missing nested bool, got map: %#v", out)
+	}
+}

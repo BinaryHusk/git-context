@@ -1,6 +1,7 @@
 package git
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -33,7 +34,11 @@ func (g *Git) WriteConfig(config map[string]any) error {
 	return nil
 }
 
-// BackupConfig creates a backup of the git config.
+// BackupConfig creates a backup of the git config, but skips the backup
+// when the source is a git-context-generated manifest. The backup exists
+// to preserve the user's pre-migration `~/.gitconfig` on the first
+// switch after upgrade; once we've taken over the file there's nothing
+// useful to back up, and re-backing up would clobber the original.
 func (g *Git) BackupConfig(backupPath string) error {
 	data, err := os.ReadFile(g.globalConfigPath)
 	if err != nil {
@@ -42,6 +47,10 @@ func (g *Git) BackupConfig(backupPath string) error {
 		}
 
 		return errors.Wrap(err, "failed to read git config for backup")
+	}
+
+	if bytes.HasPrefix(data, []byte(rootConfigHeader)) {
+		return nil // Source is a generated manifest; nothing useful to back up.
 	}
 
 	if err := os.WriteFile(backupPath, data, 0o644); err != nil {
