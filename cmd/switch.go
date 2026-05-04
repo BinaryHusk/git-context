@@ -56,38 +56,26 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 
 	ui.PrintHeader("Switching to Profile: " + profileName)
 
-	// Create Git instance
 	g := git.NewGit(paths.GitConfigFile)
 
-	// Backup current config
 	if err := g.BackupConfig(paths.GitConfigBackup); err != nil {
 		ui.PrintWarning(fmt.Sprintf("Failed to backup git config: %v", err))
 	} else {
 		ui.PrintInfo("Backed up git config to " + paths.GitConfigBackup)
 	}
 
-	// Build the merged configuration
-	mergedProfile, err := cfg.Merge(profileName)
-	if err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to merge configurations: %v", err))
-
-		return errors.Wrap(err, "failed to merge configurations")
-	}
-
-	// Convert profile to git config format and write
-	gitConfig := profileToGitConfig(mergedProfile)
-	if err := g.WriteConfig(gitConfig); err != nil {
-		ui.PrintError(fmt.Sprintf("Failed to write git config: %v", err))
-
-		return errors.Wrap(err, "failed to write git config")
-	}
-
-	// Update current profile
 	if cfg.Current != "" && cfg.Current != profileName {
 		cfg.Previous = cfg.Current
 	}
 
 	cfg.Current = profileName
+
+	if err := g.Regenerate(cfg, paths.ProfilesDir); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to regenerate git config: %v", err))
+
+		return errors.Wrap(err, "failed to regenerate git config")
+	}
+
 	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to save config: %v", err))
 
@@ -98,71 +86,6 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 	ui.PrintInfo(fmt.Sprintf("User: %s <%s>", profile.User.Name, profile.User.Email))
 
 	return nil
-}
-
-// profileToGitConfig converts a Profile to a git configuration map.
-// It maps profile fields to git config keys (user.name, user.email, etc.).
-func profileToGitConfig(profile *config.Profile) map[string]any {
-	gitConfig := make(map[string]any)
-
-	// User section
-	if profile.User.Name != "" {
-		gitConfig["user.name"] = profile.User.Name
-	}
-
-	if profile.User.Email != "" {
-		gitConfig["user.email"] = profile.User.Email
-	}
-
-	if profile.User.SigningKey != "" {
-		gitConfig["user.signingkey"] = profile.User.SigningKey
-	}
-
-	// URL rewrites
-	for _, url := range profile.URL {
-		key := fmt.Sprintf("url \"%s\".insteadOf", url.Pattern)
-		gitConfig[key] = url.InsteadOf
-	}
-
-	// Dynamically add all sections from the profile
-	for _, section := range config.ConfigSections {
-		if sectionMap := profile.GetSection(section); sectionMap != nil {
-			addSectionToConfig(gitConfig, section, sectionMap)
-		}
-	}
-
-	return gitConfig
-}
-
-// addSectionToConfig adds a section with values to the git configuration map.
-// It delegates to addSectionToConfigRecursive for hierarchical key handling.
-func addSectionToConfig(
-	config map[string]any,
-	section string,
-	values map[string]any,
-) {
-	addSectionToConfigRecursive(config, section, values)
-}
-
-// addSectionToConfigRecursive recursively adds nested configuration values.
-// It handles dot-separated keys by creating nested maps as needed.
-func addSectionToConfigRecursive(
-	config map[string]any,
-	prefix string,
-	values map[string]any,
-) {
-	for k, v := range values {
-		// If the value is a map, it's a subsection - just continue with dot notation
-		// e.g., add.interactive, delta.decorations, delta.interactive
-		if m, ok := v.(map[string]any); ok {
-			key := fmt.Sprintf("%s.%s", prefix, k)
-			addSectionToConfigRecursive(config, key, m)
-		} else {
-			// Leaf value - add it directly
-			key := fmt.Sprintf("%s.%s", prefix, k)
-			config[key] = v
-		}
-	}
 }
 
 func init() {
