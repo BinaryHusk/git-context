@@ -48,8 +48,11 @@ func (g *Git) BackupConfig(backupPath string) error {
 	return nil
 }
 
-// WriteProfileFile writes a flat key→value git config map to `path`
-// using atomic temp-file-and-rename semantics.
+// WriteProfileFile writes a flat key→value git config map to `path` using
+// atomic temp-file-and-rename semantics.
+//
+// Receiver `g` is unused here; the method form is kept for API symmetry
+// with WriteRootConfig and Regenerate, which do consume receiver state.
 func (g *Git) WriteProfileFile(path string, config map[string]any) error {
 	content := buildGitConfig(config)
 
@@ -57,6 +60,9 @@ func (g *Git) WriteProfileFile(path string, config map[string]any) error {
 }
 
 // atomicWrite writes data to a sibling `.tmp` file then renames it into place.
+// The rename is atomic with respect to concurrent readers (same-filesystem
+// rename(2) on POSIX). It is NOT crash-safe: there is no fsync, so a power
+// loss between write and rename can leave a partial file.
 func atomicWrite(path string, data []byte) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {

@@ -347,3 +347,21 @@ func TestWriteProfileFileAtomic(t *testing.T) {
 		t.Errorf("temp files left behind: %v", matches)
 	}
 }
+
+func TestWriteProfileFileWriteFailure(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "missing-subdir", "work.gitconfig")
+
+	g := NewGit(filepath.Join(tmpDir, ".gitconfig"))
+
+	err := g.WriteProfileFile(target, map[string]any{"user.name": "X"})
+	if err == nil {
+		t.Fatal("expected error writing into nonexistent directory, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "failed to write temp file") {
+		t.Errorf("error = %q, want it to wrap 'failed to write temp file'", err.Error())
+	}
+}
