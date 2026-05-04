@@ -37,6 +37,7 @@ type Profile struct {
 	Rerere      map[string]any `yaml:"rerere,omitempty"`
 	Pager       map[string]any `yaml:"pager,omitempty"`
 	Tag         map[string]any `yaml:"tag,omitempty"`
+	Directories []string       `yaml:"directories,omitempty"`
 	URL         []URLConfig    `yaml:"url,omitempty"`
 	User        UserConfig     `yaml:"user,omitempty"`
 }

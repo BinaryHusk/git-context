@@ -587,3 +587,38 @@ func TestMergeMapEdgeCases(t *testing.T) {
 		t.Error("Profile value should be included")
 	}
 }
+
+func TestProfileYAMLRoundTripWithDirectories(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
+	cfg := NewConfig()
+	cfg.Profiles["work"] = &Profile{
+		User:        UserConfig{Name: "Andre", Email: "a@work.com"},
+		Directories: []string{"/Users/andre/projects/work", "/Users/andre/Mollie"},
+	}
+
+	if err := cfg.SaveConfig(configFile); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
+	}
+
+	loaded, err := LoadConfig(configFile)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	got := loaded.Profiles["work"].Directories
+	want := []string{"/Users/andre/projects/work", "/Users/andre/Mollie"}
+
+	if len(got) != len(want) {
+		t.Fatalf("Directories length: got %d, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("Directories[%d]: got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
