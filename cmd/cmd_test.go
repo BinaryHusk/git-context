@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/aanogueira/git-context/internal/config"
@@ -499,9 +500,23 @@ func TestListProfilesShowsDirsColumn(t *testing.T) {
 	}
 }
 
+// stdoutMu serializes the os.Stdout swap performed by captureStdout so
+// concurrent stdout-capturing tests don't race on the global. Tests that
+// use captureStdout must NOT call t.Parallel() — t.Setenv is also commonly
+// used and is itself incompatible with parallel.
+var stdoutMu sync.Mutex
+
 // captureStdout runs fn and returns whatever it wrote to os.Stdout.
+// IMPORTANT: do not call from a t.Parallel() test — this swaps the
+// global os.Stdout and serializes via stdoutMu. Concurrent capturers
+// would still produce correct values because of the mutex, but other
+// non-capturing parallel tests printing to stdout during fn will have
+// their output silently captured, which is rarely what you want.
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
+
+	stdoutMu.Lock()
+	defer stdoutMu.Unlock()
 
 	r, w, err := os.Pipe()
 	if err != nil {
