@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -600,5 +601,63 @@ func TestShowDisplaysDirectories(t *testing.T) {
 
 	if !strings.Contains(out, "/Users/x/Mollie/") {
 		t.Errorf("output missing assigned dir:\n%s", out)
+	}
+}
+
+func TestCurrentShowsEffectiveProfileInCwd(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	paths, _ := config.NewPaths()
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Name: "Andre", Email: "a@work.com"},
+		Directories: []string{},
+	}
+	cfg.Profiles["personal"] = &config.Profile{
+		User:        config.UserConfig{Name: "Andre", Email: "a@home.com"},
+		Directories: []string{},
+	}
+	cfg.Current = "work"
+
+	repoDir := filepath.Join(tmpHome, "personal-repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+
+	if out, err := exec.Command("git", "-C", repoDir, "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+
+	cfg.Profiles["personal"].Directories = []string{repoDir + "/"}
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	g := git.NewGit(paths.GitConfigFile)
+	if err := g.Regenerate(cfg, paths.ProfilesDir); err != nil {
+		t.Fatalf("Regenerate: %v", err)
+	}
+
+	t.Chdir(repoDir)
+
+	out := captureStdout(t, func() {
+		if err := runCurrent(nil, nil); err != nil {
+			t.Fatalf("runCurrent: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "Effective in") {
+		t.Errorf("output missing 'Effective in' line:\n%s", out)
+	}
+
+	if !strings.Contains(out, "personal") {
+		t.Errorf("expected 'personal' to be effective in this dir:\n%s", out)
 	}
 }

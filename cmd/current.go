@@ -2,6 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 
 	"github.com/aanogueira/git-context/internal/config"
 	"github.com/aanogueira/git-context/internal/ui"
@@ -12,12 +16,10 @@ import (
 var currentCmd = &cobra.Command{
 	Use:   "current",
 	Short: "Show the currently active profile",
-	Long:  `Display which git configuration profile is currently active.`,
+	Long:  `Display which git configuration profile is currently active globally and effective in the current directory.`,
 	RunE:  runCurrent,
 }
 
-// runCurrent handles the 'current' command to show the currently active profile.
-// It compares git configuration with saved profiles to determine which is active.
 func runCurrent(cmd *cobra.Command, args []string) error {
 	paths, err := config.NewPaths()
 	if err != nil {
@@ -33,25 +35,67 @@ func runCurrent(cmd *cobra.Command, args []string) error {
 		return errors.Wrap(err, "failed to load config")
 	}
 
+	ui.PrintHeader("Current Profile")
+
 	if cfg.Current == "" {
 		ui.PrintWarning("No active profile set")
+	} else {
+		profile, err := cfg.GetProfile(cfg.Current)
+		if err != nil {
+			ui.PrintError(fmt.Sprintf("Active profile not found: %v", err))
 
-		return nil
+			return errors.Wrap(err, "failed to get active profile")
+		}
+
+		ui.PrintInfo("Default: " + cfg.Current)
+		ui.PrintInfo("Name: " + profile.User.Name)
+		ui.PrintInfo("Email: " + profile.User.Email)
 	}
 
-	profile, err := cfg.GetProfile(cfg.Current)
-	if err != nil {
-		ui.PrintError(fmt.Sprintf("Active profile not found: %v", err))
-
-		return errors.Wrap(err, "failed to get active profile")
+	if effective := effectiveProfileInCwd(paths, cfg); effective != "" {
+		ui.PrintInfo("Effective in " + currentDir() + ": " + effective)
 	}
-
-	ui.PrintHeader("Current Profile")
-	ui.PrintInfo("Profile: " + cfg.Current)
-	ui.PrintInfo("Name: " + profile.User.Name)
-	ui.PrintInfo("Email: " + profile.User.Email)
 
 	return nil
+}
+
+// effectiveProfileInCwd asks git which file user.email comes from in the
+// current working directory. If the answer is one of our per-profile files,
+// returns the profile name; otherwise returns "".
+func effectiveProfileInCwd(paths *config.Paths, cfg *config.Config) string {
+	cmd := exec.Command("git", "config", "--show-origin", "user.email")
+
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+
+	line := strings.TrimSpace(string(out))
+
+	parts := strings.SplitN(line, "\t", 2)
+	if len(parts) == 0 {
+		return ""
+	}
+
+	origin := strings.TrimPrefix(parts[0], "file:")
+
+	for name := range cfg.Profiles {
+		profilePath := filepath.Join(paths.ProfilesDir, name+".gitconfig")
+		if origin == profilePath {
+			return name
+		}
+	}
+
+	return ""
+}
+
+func currentDir() string {
+	d, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+
+	return d
 }
 
 func init() {
