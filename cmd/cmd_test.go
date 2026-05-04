@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -464,6 +465,68 @@ func TestInitCommandExists(t *testing.T) {
 	if !found {
 		t.Error("init command should be registered")
 	}
+}
+
+func TestListProfilesShowsDirsColumn(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	paths, _ := config.NewPaths()
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Email: "x@work"},
+		Directories: []string{"/a/", "/b/"},
+	}
+	cfg.Profiles["personal"] = &config.Profile{User: config.UserConfig{Email: "x@home"}}
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	out := captureStdout(t, func() {
+		if err := runList(nil, nil); err != nil {
+			t.Fatalf("runList: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "Dirs") {
+		t.Errorf("output missing Dirs header:\n%s", out)
+	}
+
+	if !strings.Contains(out, "2") {
+		t.Errorf("output missing dir count of 2 for work:\n%s", out)
+	}
+}
+
+// captureStdout runs fn and returns whatever it wrote to os.Stdout.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+
+	old := os.Stdout
+	os.Stdout = w
+
+	done := make(chan string)
+
+	go func() {
+		var buf bytes.Buffer
+
+		_, _ = buf.ReadFrom(r)
+		done <- buf.String()
+	}()
+
+	fn()
+
+	_ = w.Close()
+
+	os.Stdout = old
+
+	return <-done
 }
 
 func TestRootCommandMetadata(t *testing.T) {
