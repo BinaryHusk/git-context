@@ -525,12 +525,16 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 
 	old := os.Stdout
-	os.Stdout = w
-
 	// fatih/color caches its output writer at init, so callers like
 	// ui.PrintInfo bypass our os.Stdout swap unless we redirect here too.
 	oldColor := color.Output
+	os.Stdout = w
 	color.Output = w
+
+	defer func() {
+		os.Stdout = old
+		color.Output = oldColor
+	}()
 
 	done := make(chan string)
 
@@ -544,9 +548,6 @@ func captureStdout(t *testing.T, fn func()) string {
 	fn()
 
 	_ = w.Close()
-
-	os.Stdout = old
-	color.Output = oldColor
 
 	return <-done
 }
