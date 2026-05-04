@@ -11,6 +11,7 @@ import (
 	"github.com/aanogueira/git-context/internal/config"
 	"github.com/aanogueira/git-context/internal/git"
 	"github.com/cockroachdb/errors"
+	"github.com/fatih/color"
 )
 
 func TestRunInit(t *testing.T) {
@@ -526,6 +527,11 @@ func captureStdout(t *testing.T, fn func()) string {
 	old := os.Stdout
 	os.Stdout = w
 
+	// fatih/color caches its output writer at init, so callers like
+	// ui.PrintInfo bypass our os.Stdout swap unless we redirect here too.
+	oldColor := color.Output
+	color.Output = w
+
 	done := make(chan string)
 
 	go func() {
@@ -540,6 +546,7 @@ func captureStdout(t *testing.T, fn func()) string {
 	_ = w.Close()
 
 	os.Stdout = old
+	color.Output = oldColor
 
 	return <-done
 }
@@ -557,5 +564,40 @@ func TestRootCommandMetadata(t *testing.T) {
 
 	if rootCmd.Short == "" {
 		t.Error("Short description should be set")
+	}
+}
+
+func TestShowDisplaysDirectories(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	paths, _ := config.NewPaths()
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Name: "X", Email: "x@work"},
+		Directories: []string{"/Users/x/work/", "/Users/x/Mollie/"},
+	}
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	out := captureStdout(t, func() {
+		if err := runShow(nil, []string{"work"}); err != nil {
+			t.Fatalf("runShow: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "Directories") {
+		t.Errorf("output missing Directories label:\n%s", out)
+	}
+
+	if !strings.Contains(out, "/Users/x/work/") {
+		t.Errorf("output missing assigned dir:\n%s", out)
+	}
+
+	if !strings.Contains(out, "/Users/x/Mollie/") {
+		t.Errorf("output missing assigned dir:\n%s", out)
 	}
 }
