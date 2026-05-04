@@ -48,6 +48,30 @@ func (g *Git) BackupConfig(backupPath string) error {
 	return nil
 }
 
+// WriteProfileFile writes a flat key→value git config map to `path`
+// using atomic temp-file-and-rename semantics.
+func (g *Git) WriteProfileFile(path string, config map[string]any) error {
+	content := buildGitConfig(config)
+
+	return atomicWrite(path, []byte(content))
+}
+
+// atomicWrite writes data to a sibling `.tmp` file then renames it into place.
+func atomicWrite(path string, data []byte) error {
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return errors.Wrap(err, "failed to write temp file")
+	}
+
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+
+		return errors.Wrap(err, "failed to rename temp file into place")
+	}
+
+	return nil
+}
+
 // buildGitConfig builds git config format from a map of key-value pairs.
 // It handles both regular dotted notation and quoted subsections.
 // Returns a formatted git config string with sections and key-value pairs.

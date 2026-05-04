@@ -281,3 +281,69 @@ func TestBuildGitConfigWithNestedDotNotation(t *testing.T) {
 		t.Error("Config should contain nested section")
 	}
 }
+
+func TestWriteProfileFile(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "work.gitconfig")
+
+	g := NewGit(filepath.Join(tmpDir, ".gitconfig"))
+
+	settings := map[string]any{
+		"user.name":  "Andre",
+		"user.email": "andre@work.com",
+	}
+
+	if err := g.WriteProfileFile(target, settings); err != nil {
+		t.Fatalf("WriteProfileFile error: %v", err)
+	}
+
+	data, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+
+	content := string(data)
+
+	if !strings.Contains(content, "[user]") {
+		t.Errorf("missing [user] section in:\n%s", content)
+	}
+
+	if !strings.Contains(content, "name = Andre") {
+		t.Errorf("missing user.name in:\n%s", content)
+	}
+
+	if !strings.Contains(content, "email = andre@work.com") {
+		t.Errorf("missing user.email in:\n%s", content)
+	}
+}
+
+func TestWriteProfileFileAtomic(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	target := filepath.Join(tmpDir, "work.gitconfig")
+
+	// Pre-create the file with old content to verify replace, not append.
+	if err := os.WriteFile(target, []byte("OLD\n"), 0o644); err != nil {
+		t.Fatalf("setup write failed: %v", err)
+	}
+
+	g := NewGit(filepath.Join(tmpDir, ".gitconfig"))
+
+	if err := g.WriteProfileFile(target, map[string]any{"user.name": "New"}); err != nil {
+		t.Fatalf("WriteProfileFile error: %v", err)
+	}
+
+	data, _ := os.ReadFile(target)
+	if strings.Contains(string(data), "OLD") {
+		t.Errorf("old content not replaced:\n%s", data)
+	}
+
+	// No leftover .tmp file.
+	matches, _ := filepath.Glob(filepath.Join(tmpDir, "*.tmp"))
+	if len(matches) > 0 {
+		t.Errorf("temp files left behind: %v", matches)
+	}
+}
