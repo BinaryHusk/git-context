@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -111,5 +112,90 @@ func TestAssignmentMap(t *testing.T) {
 		if got[path] != wantProfile {
 			t.Errorf("AssignmentMap[%q] = %q, want %q", path, got[path], wantProfile)
 		}
+	}
+}
+
+func TestAssignDirSuccess(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewConfig()
+	cfg.Profiles["work"] = &Profile{User: UserConfig{Name: "X"}}
+
+	if err := cfg.AssignDir("/Users/x/work/", "work"); err != nil {
+		t.Fatalf("AssignDir error: %v", err)
+	}
+
+	if got := cfg.Profiles["work"].Directories; len(got) != 1 || got[0] != "/Users/x/work/" {
+		t.Errorf("Directories = %v, want [/Users/x/work/]", got)
+	}
+}
+
+func TestAssignDirRejectsUnknownProfile(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewConfig()
+
+	if err := cfg.AssignDir("/Users/x/work/", "ghost"); err == nil {
+		t.Error("expected error for unknown profile, got nil")
+	}
+}
+
+func TestAssignDirRejectsDuplicateAcrossProfiles(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewConfig()
+	cfg.Profiles["work"] = &Profile{Directories: []string{"/Users/x/shared/"}}
+	cfg.Profiles["personal"] = &Profile{}
+
+	err := cfg.AssignDir("/Users/x/shared/", "personal")
+	if err == nil {
+		t.Fatal("expected error for duplicate path, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "already assigned") {
+		t.Errorf("error = %q, want it to mention 'already assigned'", err.Error())
+	}
+}
+
+func TestAssignDirIdempotentSameProfile(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewConfig()
+	cfg.Profiles["work"] = &Profile{Directories: []string{"/Users/x/work/"}}
+
+	if err := cfg.AssignDir("/Users/x/work/", "work"); err != nil {
+		t.Fatalf("AssignDir error: %v", err)
+	}
+
+	if got := len(cfg.Profiles["work"].Directories); got != 1 {
+		t.Errorf("Directories len = %d, want 1 (no duplication)", got)
+	}
+}
+
+func TestUnassignDirSuccess(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewConfig()
+	cfg.Profiles["work"] = &Profile{
+		Directories: []string{"/Users/x/work/", "/Users/x/Mollie/"},
+	}
+
+	if err := cfg.UnassignDir("/Users/x/work/"); err != nil {
+		t.Fatalf("UnassignDir error: %v", err)
+	}
+
+	got := cfg.Profiles["work"].Directories
+	if len(got) != 1 || got[0] != "/Users/x/Mollie/" {
+		t.Errorf("Directories = %v, want [/Users/x/Mollie/]", got)
+	}
+}
+
+func TestUnassignDirNotFound(t *testing.T) {
+	t.Parallel()
+
+	cfg := NewConfig()
+
+	if err := cfg.UnassignDir("/Users/x/missing/"); err == nil {
+		t.Error("expected error for missing path, got nil")
 	}
 }

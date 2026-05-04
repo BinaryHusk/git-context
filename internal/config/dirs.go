@@ -79,3 +79,53 @@ func (c *Config) AssignmentMap() map[string]string {
 
 	return out
 }
+
+// AssignDir adds `path` to the named profile's Directories list.
+// Returns an error if:
+//   - the profile does not exist, or
+//   - the path is already assigned to a different profile.
+//
+// Re-assigning the same path to its current profile is a no-op.
+func (c *Config) AssignDir(path, profileName string) error {
+	profile, exists := c.Profiles[profileName]
+	if !exists {
+		return errors.WithStack(errors.Newf("profile %q does not exist", profileName))
+	}
+
+	if owner, ok := c.LookupDir(path); ok {
+		if owner == profileName {
+			return nil
+		}
+
+		return errors.WithStack(errors.Newf(
+			"path %q is already assigned to profile %q; run 'dir remove' first",
+			path, owner,
+		))
+	}
+
+	profile.Directories = append(profile.Directories, path)
+
+	return nil
+}
+
+// UnassignDir removes `path` from whichever profile owns it.
+// Returns an error if no profile owns the path.
+func (c *Config) UnassignDir(path string) error {
+	owner, ok := c.LookupDir(path)
+	if !ok {
+		return errors.WithStack(errors.Newf("path %q is not assigned to any profile", path))
+	}
+
+	profile := c.Profiles[owner]
+	filtered := profile.Directories[:0]
+
+	for _, d := range profile.Directories {
+		if d != path {
+			filtered = append(filtered, d)
+		}
+	}
+
+	profile.Directories = filtered
+
+	return nil
+}
