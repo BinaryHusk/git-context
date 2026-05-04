@@ -3,9 +3,12 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/aanogueira/git-context/internal/config"
+	"github.com/aanogueira/git-context/internal/git"
+	"github.com/cockroachdb/errors"
 )
 
 func TestRunInit(t *testing.T) {
@@ -226,6 +229,86 @@ func TestRemoveProfile(t *testing.T) {
 			t.Error("Removing non-existent profile should fail")
 		}
 	})
+}
+
+func TestRemoveRegeneratesAndDropsDirectories(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	paths, err := config.NewPaths()
+	if err != nil {
+		t.Fatalf("NewPaths: %v", err)
+	}
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Name: "X", Email: "x@work"},
+		Directories: []string{"/tmp/work/"},
+	}
+	cfg.Current = "work"
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	// Pre-generate so a stale work.gitconfig exists.
+	g := git.NewGit(paths.GitConfigFile)
+	if err := g.Regenerate(cfg, paths.ProfilesDir); err != nil {
+		t.Fatalf("Regenerate: %v", err)
+	}
+
+	// Remove the profile (auto-confirm via removeProfileForTest helper below).
+	if err := removeProfileForTest(paths, "work"); err != nil {
+		t.Fatalf("removeProfileForTest: %v", err)
+	}
+
+	loaded, err := config.LoadConfig(paths.ConfigFile)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	if _, exists := loaded.Profiles["work"]; exists {
+		t.Error("profile 'work' still present after remove")
+	}
+
+	if _, err := os.Stat(paths.GitConfigFile); err == nil {
+		data, _ := os.ReadFile(paths.GitConfigFile)
+		if strings.Contains(string(data), "/tmp/work/") {
+			t.Errorf("root manifest still references removed dir:\n%s", data)
+		}
+	}
+}
+
+// removeProfileForTest performs the same regeneration logic as runRemove
+// but without the interactive prompt — used so tests can exercise the
+// post-confirmation code path.
+func removeProfileForTest(paths *config.Paths, name string) error {
+	cfg, err := config.LoadConfig(paths.ConfigFile)
+	if err != nil {
+		return errors.Wrap(err, "load config")
+	}
+
+	if err := cfg.RemoveProfile(name); err != nil {
+		return errors.Wrap(err, "remove profile")
+	}
+
+	if cfg.Current == name {
+		cfg.Current = ""
+	}
+
+	if cfg.Previous == name {
+		cfg.Previous = ""
+	}
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		return errors.Wrap(err, "save config")
+	}
+
+	if err := git.NewGit(paths.GitConfigFile).Regenerate(cfg, paths.ProfilesDir); err != nil {
+		return errors.Wrap(err, "regenerate git config")
+	}
+
+	return nil
 }
 
 func TestListProfiles(t *testing.T) {
