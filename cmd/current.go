@@ -77,16 +77,32 @@ func effectiveProfileInCwd(paths *config.Paths, cfg *config.Config) string {
 		return ""
 	}
 
-	origin := strings.TrimPrefix(parts[0], "file:")
+	if !strings.HasPrefix(parts[0], "file:") {
+		return ""
+	}
+
+	origin := resolveSymlinks(strings.TrimPrefix(parts[0], "file:"))
 
 	for name := range cfg.Profiles {
-		profilePath := filepath.Join(paths.ProfilesDir, name+".gitconfig")
+		profilePath := resolveSymlinks(filepath.Join(paths.ProfilesDir, name+".gitconfig"))
 		if origin == profilePath {
 			return name
 		}
 	}
 
 	return ""
+}
+
+// resolveSymlinks returns the symlink-resolved absolute path. On error
+// (e.g. file does not exist) it returns the input unchanged so we can
+// still attempt a literal comparison.
+func resolveSymlinks(path string) string {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return path
+	}
+
+	return resolved
 }
 
 func currentDir() string {

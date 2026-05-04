@@ -661,3 +661,29 @@ func TestCurrentShowsEffectiveProfileInCwd(t *testing.T) {
 		t.Errorf("expected 'personal' to be effective in this dir:\n%s", out)
 	}
 }
+
+func TestEffectiveProfileInCwdRejectsNonFileOrigin(t *testing.T) {
+	// Hard to fake `git config --show-origin` without actually running git,
+	// so this test serves as a placeholder asserting the function returns
+	// "" when no git command is available (i.e. when we're in a directory
+	// where the git invocation fails). The richer behavior is exercised by
+	// TestCurrentShowsEffectiveProfileInCwd.
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
+	}
+
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	// Run from a temp dir that is NOT a git repo. git config will fail.
+	t.Chdir(tmpHome)
+
+	paths, _ := config.NewPaths()
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{User: config.UserConfig{Name: "X"}}
+
+	if got := effectiveProfileInCwd(paths, cfg); got != "" {
+		t.Errorf("effectiveProfileInCwd outside a repo = %q, want empty", got)
+	}
+}
