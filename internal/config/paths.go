@@ -11,6 +11,7 @@ import (
 type Paths struct {
 	ConfigDir       string
 	ConfigFile      string
+	ProfilesDir     string
 	GitConfigFile   string
 	GitConfigBackup string
 }
@@ -24,17 +25,22 @@ func NewPaths() (*Paths, error) {
 
 	configDir := filepath.Join(home, ".config", "git-context")
 	configFile := filepath.Join(configDir, "config.yaml")
+	profilesDir := filepath.Join(configDir, "profiles")
 	gitConfigFile := filepath.Join(home, ".gitconfig")
 	gitConfigBackup := filepath.Join(home, ".gitconfig.bak")
 
-	// Create config directory if it doesn't exist
 	if err := os.MkdirAll(configDir, 0o755); err != nil {
 		return nil, errors.Wrap(err, "failed to create config directory")
+	}
+
+	if err := os.MkdirAll(profilesDir, 0o755); err != nil {
+		return nil, errors.Wrap(err, "failed to create profiles directory")
 	}
 
 	return &Paths{
 		ConfigDir:       configDir,
 		ConfigFile:      configFile,
+		ProfilesDir:     profilesDir,
 		GitConfigFile:   gitConfigFile,
 		GitConfigBackup: gitConfigBackup,
 	}, nil

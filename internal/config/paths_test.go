@@ -81,3 +81,25 @@ func TestNewPathsCreatesDirectory(t *testing.T) {
 		t.Error("ConfigDir path exists but is not a directory")
 	}
 }
+
+func TestPathsHasProfilesDir(t *testing.T) {
+	t.Parallel()
+
+	paths, err := NewPaths()
+	if err != nil {
+		t.Fatalf("NewPaths failed: %v", err)
+	}
+
+	if paths.ProfilesDir == "" {
+		t.Fatal("ProfilesDir is empty")
+	}
+
+	want := filepath.Join(paths.ConfigDir, "profiles")
+	if paths.ProfilesDir != want {
+		t.Errorf("ProfilesDir = %q, want %q", paths.ProfilesDir, want)
+	}
+
+	if _, err := os.Stat(paths.ProfilesDir); err != nil {
+		t.Errorf("ProfilesDir was not created: %v", err)
+	}
+}
