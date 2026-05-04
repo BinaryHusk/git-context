@@ -136,6 +136,12 @@ func (g *Git) WriteRootConfig(defaultProfilePath string, assignments map[string]
 //
 // The root manifest is written by WriteRootConfig and may be a no-op if no
 // default profile is set and no directories are assigned.
+//
+// Failure semantics: writes are not transactional across files. Each
+// individual file write is atomic (temp+rename), but if a per-profile write
+// fails midway the earlier profile files remain on disk and the root
+// manifest is NOT updated — `~/.gitconfig` continues to point at the
+// previous set. The next successful Regenerate fully reconciles state.
 func (g *Git) Regenerate(cfg *config.Config, profilesDir string) error {
 	for name := range cfg.Profiles {
 		merged, err := cfg.Merge(name)
