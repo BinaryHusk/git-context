@@ -3,13 +3,31 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/aanogueira/git-context/internal/config"
 )
 
+// skipOnWindows bails out of CLI tests that hard-code POSIX-shaped paths
+// (`/tmp/...`) or that rely on `t.Setenv("HOME", ...)` to isolate the
+// home directory. Neither assumption holds on Windows: `/tmp/x` becomes
+// `<cwd-drive>:\tmp\x` after `filepath.Abs`, and `os.UserHomeDir` reads
+// `USERPROFILE` rather than `HOME`. The production code is exercised on
+// Windows by the unit-level tests in `internal/config` and `internal/git`;
+// this file's tests are CLI smoke checks rather than feature contracts.
+func skipOnWindows(t *testing.T) {
+	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX path literals or HOME isolation; covered on Unix only")
+	}
+}
+
 func TestDirAddAssignsAndRegenerates(t *testing.T) {
+	skipOnWindows(t)
+
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
@@ -43,6 +61,8 @@ func TestDirAddAssignsAndRegenerates(t *testing.T) {
 }
 
 func TestDirAddRejectsDuplicate(t *testing.T) {
+	skipOnWindows(t)
+
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
@@ -91,6 +111,8 @@ func TestDirAddWarnsWhenNoDefaultProfile(t *testing.T) {
 }
 
 func TestDirRemoveUnassignsAndRegenerates(t *testing.T) {
+	skipOnWindows(t)
+
 	tmpHome := t.TempDir()
 	t.Setenv("HOME", tmpHome)
 
