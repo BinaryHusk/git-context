@@ -17,6 +17,9 @@ import (
 //     git-style glob).
 //   - `~` is expanded to the user's home directory.
 //   - Relative paths are resolved against the current working directory.
+//   - On Windows, backslashes are normalized to forward slashes so the
+//     output is in the canonical form git config expects in `gitdir:`
+//     and `path =` values (and so storage in YAML is platform-agnostic).
 //   - A trailing slash is always appended so the directive matches the
 //     whole subtree, not just the directory itself.
 func NormalizeDir(path string) (string, error) {
@@ -45,6 +48,8 @@ func NormalizeDir(path string) (string, error) {
 
 		path = abs
 	}
+
+	path = strings.ReplaceAll(path, `\`, `/`)
 
 	if !strings.HasSuffix(path, "/") {
 		path += "/"

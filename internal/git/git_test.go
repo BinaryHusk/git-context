@@ -331,7 +331,7 @@ func TestWriteRootConfigDefaultAndAssignments(t *testing.T) {
 		t.Errorf("missing [include] block:\n%s", content)
 	}
 
-	if !strings.Contains(content, "path = "+defaultProfilePath) {
+	if !strings.Contains(content, "path = "+toGitPath(defaultProfilePath)) {
 		t.Errorf("missing default profile path:\n%s", content)
 	}
 
@@ -464,7 +464,7 @@ func TestRegenerate(t *testing.T) {
 	}
 
 	rootStr := string(root)
-	wantInclude := filepath.Join(profilesDir, "work.gitconfig")
+	wantInclude := toGitPath(filepath.Join(profilesDir, "work.gitconfig"))
 
 	if !strings.Contains(rootStr, "path = "+wantInclude) {
 		t.Errorf("root missing default include for %q:\n%s", wantInclude, rootStr)

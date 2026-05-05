@@ -3,9 +3,15 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// toFwd mirrors NormalizeDir's backslash-to-slash canonicalization so test
+// expectations built via filepath.Join (which uses OS-native separators)
+// stay comparable on Windows.
+func toFwd(p string) string { return strings.ReplaceAll(p, `\`, `/`) }
 
 func TestNormalizeDir(t *testing.T) {
 	t.Parallel()
@@ -20,21 +26,33 @@ func TestNormalizeDir(t *testing.T) {
 		t.Fatalf("Getwd failed: %v", err)
 	}
 
-	tests := []struct {
+	type tcase struct {
 		name string
 		in   string
 		want string
-	}{
-		{"absolute path gets trailing slash", "/Users/x/projects/work", "/Users/x/projects/work/"},
-		{
-			"absolute path keeps existing trailing slash",
-			"/Users/x/projects/work/",
-			"/Users/x/projects/work/",
-		},
-		{"tilde expands to home", "~/projects/work", filepath.Join(home, "projects", "work") + "/"},
-		{"relative resolves against cwd", "./foo", filepath.Join(cwd, "foo") + "/"},
+	}
+
+	tests := []tcase{
+		{"tilde expands to home", "~/projects/work", toFwd(filepath.Join(home, "projects", "work")) + "/"},
+		{"relative resolves against cwd", "./foo", toFwd(filepath.Join(cwd, "foo")) + "/"},
 		{"single-star glob passes through unchanged", "~/work/*/repo", "~/work/*/repo"},
 		{"double-star glob passes through unchanged", "~/work/**", "~/work/**"},
+	}
+
+	// POSIX-rooted absolute paths (`/Users/x/...`) are not absolute on
+	// Windows — `filepath.Abs` resolves them against the cwd's drive,
+	// producing `D:/Users/x/...`. Skip those rows on Windows; the
+	// equivalent semantics are exercised by the tilde + relative cases
+	// above, which build absolute paths via filepath.Join.
+	if runtime.GOOS != "windows" {
+		tests = append(tests,
+			tcase{"absolute path gets trailing slash", "/Users/x/projects/work", "/Users/x/projects/work/"},
+			tcase{
+				"absolute path keeps existing trailing slash",
+				"/Users/x/projects/work/",
+				"/Users/x/projects/work/",
+			},
+		)
 	}
 
 	for _, tc := range tests {

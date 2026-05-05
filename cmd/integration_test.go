@@ -14,6 +14,8 @@ import (
 // default profile, assign a directory to a different profile, verify that
 // inside the assigned directory git resolves the right user.email.
 func TestEndToEndDirectoryAssignment(t *testing.T) {
+	skipOnWindows(t)
+
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not installed")
 	}
