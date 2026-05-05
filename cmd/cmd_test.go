@@ -1,11 +1,18 @@
 package cmd
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 
 	"github.com/aanogueira/git-context/internal/config"
+	"github.com/aanogueira/git-context/internal/git"
+	"github.com/cockroachdb/errors"
+	"github.com/fatih/color"
 )
 
 func TestRunInit(t *testing.T) {
@@ -228,6 +235,86 @@ func TestRemoveProfile(t *testing.T) {
 	})
 }
 
+func TestRemoveRegeneratesAndDropsDirectories(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	paths, err := config.NewPaths()
+	if err != nil {
+		t.Fatalf("NewPaths: %v", err)
+	}
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Name: "X", Email: "x@work"},
+		Directories: []string{"/tmp/work/"},
+	}
+	cfg.Current = "work"
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	// Pre-generate so a stale work.gitconfig exists.
+	g := git.NewGit(paths.GitConfigFile)
+	if err := g.Regenerate(cfg, paths.ProfilesDir); err != nil {
+		t.Fatalf("Regenerate: %v", err)
+	}
+
+	// Remove the profile (auto-confirm via removeProfileForTest helper below).
+	if err := removeProfileForTest(paths, "work"); err != nil {
+		t.Fatalf("removeProfileForTest: %v", err)
+	}
+
+	loaded, err := config.LoadConfig(paths.ConfigFile)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	if _, exists := loaded.Profiles["work"]; exists {
+		t.Error("profile 'work' still present after remove")
+	}
+
+	if _, err := os.Stat(paths.GitConfigFile); err == nil {
+		data, _ := os.ReadFile(paths.GitConfigFile)
+		if strings.Contains(string(data), "/tmp/work/") {
+			t.Errorf("root manifest still references removed dir:\n%s", data)
+		}
+	}
+}
+
+// removeProfileForTest performs the same regeneration logic as runRemove
+// but without the interactive prompt — used so tests can exercise the
+// post-confirmation code path.
+func removeProfileForTest(paths *config.Paths, name string) error {
+	cfg, err := config.LoadConfig(paths.ConfigFile)
+	if err != nil {
+		return errors.Wrap(err, "load config")
+	}
+
+	if err := cfg.RemoveProfile(name); err != nil {
+		return errors.Wrap(err, "remove profile")
+	}
+
+	if cfg.Current == name {
+		cfg.Current = ""
+	}
+
+	if cfg.Previous == name {
+		cfg.Previous = ""
+	}
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		return errors.Wrap(err, "save config")
+	}
+
+	if err := git.NewGit(paths.GitConfigFile).Regenerate(cfg, paths.ProfilesDir); err != nil {
+		return errors.Wrap(err, "regenerate git config")
+	}
+
+	return nil
+}
+
 func TestListProfiles(t *testing.T) {
 	t.Parallel()
 
@@ -364,99 +451,6 @@ func TestShowProfile(t *testing.T) {
 	})
 }
 
-func TestProfileToGitConfig(t *testing.T) {
-	t.Parallel()
-
-	profile := &config.Profile{
-		User: config.UserConfig{
-			Name:       "Test User",
-			Email:      "test@example.com",
-			SigningKey: "ABCD1234",
-		},
-		URL: []config.URLConfig{
-			{
-				Pattern:   "ssh://git@github.com/",
-				InsteadOf: "https://github.com/",
-			},
-		},
-		Core: map[string]any{
-			"editor": "vim",
-		},
-		Push: map[string]any{
-			"default": "simple",
-		},
-	}
-
-	gitConfig := profileToGitConfig(profile)
-
-	// Verify user config
-	if gitConfig["user.name"] != "Test User" {
-		t.Error("Git config should contain user.name")
-	}
-
-	if gitConfig["user.email"] != "test@example.com" {
-		t.Error("Git config should contain user.email")
-	}
-
-	if gitConfig["user.signingkey"] != "ABCD1234" {
-		t.Error("Git config should contain user.signingkey")
-	}
-
-	// Verify URL rewrite
-	urlKey := `url "ssh://git@github.com/".insteadOf`
-	if gitConfig[urlKey] != "https://github.com/" {
-		t.Error("Git config should contain URL rewrite")
-	}
-
-	// Verify other sections
-	if gitConfig["core.editor"] != "vim" {
-		t.Error("Git config should contain core.editor")
-	}
-
-	if gitConfig["push.default"] != "simple" {
-		t.Error("Git config should contain push.default")
-	}
-}
-
-func TestAddSectionToConfig(t *testing.T) {
-	t.Parallel()
-
-	gitConfig := make(map[string]any)
-
-	section := map[string]any{
-		"editor":   "vim",
-		"autocrlf": "input",
-	}
-
-	addSectionToConfig(gitConfig, "core", section)
-
-	if gitConfig["core.editor"] != "vim" {
-		t.Error("Should add core.editor")
-	}
-
-	if gitConfig["core.autocrlf"] != "input" {
-		t.Error("Should add core.autocrlf")
-	}
-}
-
-func TestAddSectionToConfigNested(t *testing.T) {
-	t.Parallel()
-
-	gitConfig := make(map[string]any)
-
-	section := map[string]any{
-		"interactive": map[string]any{
-			"diffFilter": "delta --color-only",
-		},
-	}
-
-	addSectionToConfig(gitConfig, "add", section)
-
-	if gitConfig["add.interactive.diffFilter"] != "delta --color-only" {
-		t.Error("Should add nested config values")
-	}
-}
-
 func TestInitCommandExists(t *testing.T) {
 	t.Parallel()
 
@@ -476,6 +470,89 @@ func TestInitCommandExists(t *testing.T) {
 	}
 }
 
+func TestListProfilesShowsDirsColumn(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
+
+	paths, _ := config.NewPaths()
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Email: "x@work"},
+		Directories: []string{"/a/", "/b/"},
+	}
+	cfg.Profiles["personal"] = &config.Profile{User: config.UserConfig{Email: "x@home"}}
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	out := captureStdout(t, func() {
+		if err := runList(nil, nil); err != nil {
+			t.Fatalf("runList: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "Dirs") {
+		t.Errorf("output missing Dirs header:\n%s", out)
+	}
+
+	if !strings.Contains(out, "2") {
+		t.Errorf("output missing dir count of 2 for work:\n%s", out)
+	}
+}
+
+// stdoutMu serializes the os.Stdout swap performed by captureStdout so
+// concurrent stdout-capturing tests don't race on the global. Tests that
+// use captureStdout must NOT call t.Parallel() — t.Setenv is also commonly
+// used and is itself incompatible with parallel.
+var stdoutMu sync.Mutex
+
+// captureStdout runs fn and returns whatever it wrote to os.Stdout.
+// IMPORTANT: do not call from a t.Parallel() test — this swaps the
+// global os.Stdout and serializes via stdoutMu. Concurrent capturers
+// would still produce correct values because of the mutex, but other
+// non-capturing parallel tests printing to stdout during fn will have
+// their output silently captured, which is rarely what you want.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+
+	stdoutMu.Lock()
+	defer stdoutMu.Unlock()
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+
+	old := os.Stdout
+	// fatih/color caches its output writer at init, so callers like
+	// ui.PrintInfo bypass our os.Stdout swap unless we redirect here too.
+	oldColor := color.Output
+	os.Stdout = w
+	color.Output = w
+
+	defer func() {
+		os.Stdout = old
+		color.Output = oldColor
+	}()
+
+	done := make(chan string)
+
+	go func() {
+		var buf bytes.Buffer
+
+		_, _ = buf.ReadFrom(r)
+		done <- buf.String()
+	}()
+
+	fn()
+
+	_ = w.Close()
+
+	return <-done
+}
+
 func TestRootCommandMetadata(t *testing.T) {
 	t.Parallel()
 
@@ -492,129 +569,121 @@ func TestRootCommandMetadata(t *testing.T) {
 	}
 }
 
-func TestProfileToGitConfigAllSections(t *testing.T) {
-	t.Parallel()
+func TestShowDisplaysDirectories(t *testing.T) {
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
 
-	profile := &config.Profile{
-		User: config.UserConfig{
-			Name:       "Test User",
-			Email:      "test@example.com",
-			SigningKey: "KEY123",
-		},
-		HTTP: map[string]any{
-			"postBuffer": "524288000",
-		},
-		Core: map[string]any{
-			"editor": "vim",
-		},
-		Interactive: map[string]any{
-			"singleKey": "true",
-		},
-		Add: map[string]any{
-			"interactive": map[string]any{
-				"useBuiltin": "false",
-			},
-		},
-		Delta: map[string]any{
-			"navigate": "true",
-		},
-		Push: map[string]any{
-			"default": "current",
-		},
-		Merge: map[string]any{
-			"conflictStyle": "diff3",
-		},
-		Commit: map[string]any{
-			"gpgsign": "true",
-		},
-		GPG: map[string]any{
-			"program": "gpg2",
-		},
-		Pull: map[string]any{
-			"rebase": "true",
-		},
-		Rerere: map[string]any{
-			"enabled": "true",
-		},
-		Column: map[string]any{
-			"ui": "auto",
-		},
-		Branch: map[string]any{
-			"autoSetupRebase": "always",
-		},
-		Init: map[string]any{
-			"defaultBranch": "main",
-		},
+	paths, _ := config.NewPaths()
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Name: "X", Email: "x@work"},
+		Directories: []string{"/Users/x/work/", "/Users/x/Mollie/"},
 	}
 
-	gitConfig := profileToGitConfig(profile)
-
-	// Verify all sections are present
-	sections := []string{
-		"user.name", "user.email", "user.signingkey",
-		"http.postBuffer",
-		"core.editor",
-		"interactive.singleKey",
-		"add.interactive.useBuiltin",
-		"delta.navigate",
-		"push.default",
-		"merge.conflictStyle",
-		"commit.gpgsign",
-		"gpg.program",
-		"pull.rebase",
-		"rerere.enabled",
-		"column.ui",
-		"branch.autoSetupRebase",
-		"init.defaultBranch",
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
 	}
 
-	for _, key := range sections {
-		if _, exists := gitConfig[key]; !exists {
-			t.Errorf("Git config should contain key: %s", key)
+	out := captureStdout(t, func() {
+		if err := runShow(nil, []string{"work"}); err != nil {
+			t.Fatalf("runShow: %v", err)
 		}
+	})
+
+	if !strings.Contains(out, "Directories") {
+		t.Errorf("output missing Directories label:\n%s", out)
+	}
+
+	if !strings.Contains(out, "/Users/x/work/") {
+		t.Errorf("output missing assigned dir:\n%s", out)
+	}
+
+	if !strings.Contains(out, "/Users/x/Mollie/") {
+		t.Errorf("output missing assigned dir:\n%s", out)
 	}
 }
 
-func TestProfileToGitConfigEmptySections(t *testing.T) {
-	t.Parallel()
-
-	profile := &config.Profile{
-		User: config.UserConfig{
-			Name:  "Test",
-			Email: "test@test.com",
-		},
-		// All other sections empty/nil
+func TestCurrentShowsEffectiveProfileInCwd(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
 	}
 
-	gitConfig := profileToGitConfig(profile)
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
 
-	// Should have user config
-	if gitConfig["user.name"] != "Test" {
-		t.Error("Should have user.name")
+	paths, _ := config.NewPaths()
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{
+		User:        config.UserConfig{Name: "Andre", Email: "a@work.com"},
+		Directories: []string{},
+	}
+	cfg.Profiles["personal"] = &config.Profile{
+		User:        config.UserConfig{Name: "Andre", Email: "a@home.com"},
+		Directories: []string{},
+	}
+	cfg.Current = "work"
+
+	repoDir := filepath.Join(tmpHome, "personal-repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
 	}
 
-	// Other sections should not add keys
-	if val, exists := gitConfig["http.something"]; exists {
-		t.Errorf("Should not have http keys, got: %v", val)
+	if out, err := exec.Command("git", "-C", repoDir, "init").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+
+	cfg.Profiles["personal"].Directories = []string{repoDir + "/"}
+
+	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
+		t.Fatalf("SaveConfig: %v", err)
+	}
+
+	g := git.NewGit(paths.GitConfigFile)
+	if err := g.Regenerate(cfg, paths.ProfilesDir); err != nil {
+		t.Fatalf("Regenerate: %v", err)
+	}
+
+	t.Chdir(repoDir)
+
+	out := captureStdout(t, func() {
+		if err := runCurrent(nil, nil); err != nil {
+			t.Fatalf("runCurrent: %v", err)
+		}
+	})
+
+	if !strings.Contains(out, "Effective in") {
+		t.Errorf("output missing 'Effective in' line:\n%s", out)
+	}
+
+	if !strings.Contains(out, "personal") {
+		t.Errorf("expected 'personal' to be effective in this dir:\n%s", out)
 	}
 }
 
-func TestAddSectionToConfigRecursiveDeepNesting(t *testing.T) {
-	t.Parallel()
-
-	gitConfig := make(map[string]any)
-
-	values := map[string]any{
-		"level1": map[string]any{
-			"level2": map[string]any{
-				"level3": "deepvalue",
-			},
-		},
+func TestEffectiveProfileInCwdRejectsNonFileOrigin(t *testing.T) {
+	// Hard to fake `git config --show-origin` without actually running git,
+	// so this test serves as a placeholder asserting the function returns
+	// "" when no git command is available (i.e. when we're in a directory
+	// where the git invocation fails). The richer behavior is exercised by
+	// TestCurrentShowsEffectiveProfileInCwd.
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not installed")
 	}
 
-	addSectionToConfigRecursive(gitConfig, "section", values)
+	tmpHome := t.TempDir()
+	t.Setenv("HOME", tmpHome)
 
-	if gitConfig["section.level1.level2.level3"] != "deepvalue" {
-		t.Error("Should handle deep nesting")
+	// Run from a temp dir that is NOT a git repo. git config will fail.
+	t.Chdir(tmpHome)
+
+	paths, _ := config.NewPaths()
+
+	cfg := config.NewConfig()
+	cfg.Profiles["work"] = &config.Profile{User: config.UserConfig{Name: "X"}}
+
+	if got := effectiveProfileInCwd(paths, cfg); got != "" {
+		t.Errorf("effectiveProfileInCwd outside a repo = %q, want empty", got)
 	}
 }

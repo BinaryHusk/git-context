@@ -66,6 +66,15 @@ func runShow(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	if len(profile.Directories) > 0 {
+		fmt.Println()
+		ui.PrintInfo("Directories:")
+
+		for _, dir := range profile.Directories {
+			ui.PrintInfo("  " + dir)
+		}
+	}
+
 	return nil
 }
 

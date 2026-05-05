@@ -182,8 +182,31 @@ git-context remove university
 | `git-context current`         | Show active profile      |
 | `git-context show <name>`     | Show profile details     |
 | `git-context remove <name>`   | Delete a profile         |
+| `git-context dir add <path> <profile>` | Assign a directory to a profile (auto-applied via includeIf) |
+| `git-context dir remove <path>`        | Remove a directory assignment |
+| `git-context dir list`                 | List all directory assignments |
 | `git-context --help`          | Show help                |
 | `git-context --version`       | Show version             |
+
+### Directory-Based Profiles
+
+Assign filesystem paths to profiles so git applies the right identity automatically when you're inside them — no need to remember to `switch`.
+
+```bash
+# Make 'work' the default profile (used everywhere unless overridden)
+git-context switch work
+
+# Assign specific directories to other profiles
+git-context dir add ~/projects/personal personal
+git-context dir add ~/Mollie work
+
+# See all assignments
+git-context dir list
+```
+
+Under the hood git-context generates one gitconfig file per profile under `~/.config/git-context/profiles/` and rewrites `~/.gitconfig` as a thin manifest of `[include]` and `[includeIf "gitdir:..."]` blocks that git-context regenerates on every mutating command. The YAML at `~/.config/git-context/config.yaml` is always the source of truth.
+
+> Note: git-context owns `~/.gitconfig` end-to-end — don't run `git config --global` directly. Edit the YAML or use the CLI instead.
 
 ## Configuration
 

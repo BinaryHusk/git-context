@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/aanogueira/git-context/internal/config"
+	"github.com/aanogueira/git-context/internal/git"
 	"github.com/aanogueira/git-context/internal/ui"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -43,10 +44,19 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return errors.Wrap(err, "profile not found")
 	}
 
-	// Confirm removal
-	confirm, err := ui.PromptConfirm(
-		fmt.Sprintf("Are you sure you want to remove profile '%s'?", profileName),
-	)
+	hasDirs := len(cfg.Profiles[profileName].Directories) > 0
+
+	prompt := fmt.Sprintf("Are you sure you want to remove profile '%s'?", profileName)
+	if hasDirs {
+		prompt = fmt.Sprintf(
+			"Profile '%s' has %d assigned director%s. Remove anyway?",
+			profileName,
+			len(cfg.Profiles[profileName].Directories),
+			plural(len(cfg.Profiles[profileName].Directories), "y", "ies"),
+		)
+	}
+
+	confirm, err := ui.PromptConfirm(prompt)
 	if err != nil {
 		ui.PrintWarning("Removal canceled")
 
@@ -59,23 +69,44 @@ func runRemove(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Remove the profile
 	if err := cfg.RemoveProfile(profileName); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to remove profile: %v", err))
 
 		return errors.Wrap(err, "failed to remove profile")
 	}
 
-	// Save config
+	if cfg.Current == profileName {
+		cfg.Current = ""
+	}
+
+	if cfg.Previous == profileName {
+		cfg.Previous = ""
+	}
+
 	if err := cfg.SaveConfig(paths.ConfigFile); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to save config: %v", err))
 
 		return errors.Wrap(err, "failed to save config")
 	}
 
+	g := git.NewGit(paths.GitConfigFile)
+	if err := g.Regenerate(cfg, paths.ProfilesDir); err != nil {
+		ui.PrintError(fmt.Sprintf("Failed to regenerate git config: %v", err))
+
+		return errors.Wrap(err, "failed to regenerate git config")
+	}
+
 	ui.PrintSuccess(fmt.Sprintf("Profile '%s' removed successfully", profileName))
 
 	return nil
+}
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return one
+	}
+
+	return many
 }
 
 func init() {

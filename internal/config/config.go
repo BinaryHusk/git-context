@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	"os/exec"
-	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -37,6 +35,7 @@ type Profile struct {
 	Rerere      map[string]any `yaml:"rerere,omitempty"`
 	Pager       map[string]any `yaml:"pager,omitempty"`
 	Tag         map[string]any `yaml:"tag,omitempty"`
+	Directories []string       `yaml:"directories,omitempty"`
 	URL         []URLConfig    `yaml:"url,omitempty"`
 	User        UserConfig     `yaml:"user,omitempty"`
 }
@@ -58,7 +57,7 @@ type URLConfig struct {
 type Config struct {
 	Global   map[string]any      `yaml:"global"`
 	Profiles map[string]*Profile `yaml:"profiles"`
-	Current  string              `yaml:"-"` // Not saved, determined at runtime
+	Current  string              `yaml:"current,omitempty"`
 	Previous string              `yaml:"previous,omitempty"`
 }
 
@@ -88,9 +87,6 @@ func LoadConfig(configFile string) (*Config, error) {
 	if err := yaml.Unmarshal(data, config); err != nil {
 		return nil, errors.Wrap(err, "failed to parse config file")
 	}
-
-	// Determine current profile by checking git config
-	config.determineCurrent()
 
 	return config, nil
 }
@@ -206,38 +202,6 @@ func (c *Config) Merge(profileName string) (*Profile, error) {
 	merged.Custom = profile.Custom
 
 	return merged, nil
-}
-
-// determineCurrent determines which profile is currently active by checking git config.
-func (c *Config) determineCurrent() {
-	// Get current git user.name from git config
-	cmd := exec.Command("git", "config", "--global", "user.name")
-
-	output, err := cmd.Output()
-	if err != nil {
-		return // Can't determine current profile
-	}
-
-	currentName := strings.TrimSpace(string(output))
-
-	// Get current git user.email from git config
-	cmd = exec.Command("git", "config", "--global", "user.email")
-
-	output, err = cmd.Output()
-	if err != nil {
-		return // Can't determine current profile
-	}
-
-	currentEmail := strings.TrimSpace(string(output))
-
-	// Match against profiles
-	for profileName, profile := range c.Profiles {
-		if profile.User.Name == currentName && profile.User.Email == currentEmail {
-			c.Current = profileName
-
-			return
-		}
-	}
 }
 
 // mergeMap merges two maps, with values from profileConfig overriding globalConfig.

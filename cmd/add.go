@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/aanogueira/git-context/internal/config"
+	"github.com/aanogueira/git-context/internal/git"
 	"github.com/aanogueira/git-context/internal/ui"
 	"github.com/cockroachdb/errors"
 	"github.com/spf13/cobra"
@@ -77,6 +78,30 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		profile.URL = promptURLRewrites()
 	}
 
+	addDirs, _ := ui.PromptConfirm("Assign directories to this profile?")
+	if addDirs {
+		for {
+			path, err := ui.PromptText("Directory path (leave empty to stop)", "")
+			if err != nil || path == "" {
+				break
+			}
+
+			normalized, err := config.NormalizeDir(path)
+			if err != nil {
+				ui.PrintWarning(fmt.Sprintf("Skipping %q: %v", path, err))
+
+				continue
+			}
+
+			profile.Directories = append(profile.Directories, normalized)
+
+			more, _ := ui.PromptConfirm("Add another directory?")
+			if !more {
+				break
+			}
+		}
+	}
+
 	// Add the profile
 	if err := cfg.AddProfile(profileName, profile); err != nil {
 		ui.PrintError(fmt.Sprintf("Failed to add profile: %v", err))
@@ -89,6 +114,15 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		ui.PrintError(fmt.Sprintf("Failed to save config: %v", err))
 
 		return errors.Wrap(err, "failed to save config")
+	}
+
+	if len(profile.Directories) > 0 || cfg.Current != "" {
+		g := git.NewGit(paths.GitConfigFile)
+		if err := g.Regenerate(cfg, paths.ProfilesDir); err != nil {
+			ui.PrintError(fmt.Sprintf("Failed to regenerate git config: %v", err))
+
+			return errors.Wrap(err, "failed to regenerate git config")
+		}
 	}
 
 	ui.PrintSuccess(fmt.Sprintf("Profile '%s' created successfully", profileName))

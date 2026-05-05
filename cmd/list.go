@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/aanogueira/git-context/internal/config"
 	"github.com/aanogueira/git-context/internal/ui"
@@ -55,14 +56,21 @@ func runList(cmd *cobra.Command, args []string) error {
 		p, _ := cfg.GetProfile(profile)
 
 		email := ""
-		if p != nil && p.User.Email != "" {
-			email = p.User.Email
+
+		dirs := "0"
+
+		if p != nil {
+			if p.User.Email != "" {
+				email = p.User.Email
+			}
+
+			dirs = strconv.Itoa(len(p.Directories))
 		}
 
-		rows[i] = []string{profile, email, status}
+		rows[i] = []string{profile, email, dirs, status}
 	}
 
-	ui.PrintTable([]string{"Profile", "Email", "Status"}, rows)
+	ui.PrintTable([]string{"Profile", "Email", "Dirs", "Status"}, rows)
 
 	return nil
 }
