@@ -464,79 +464,60 @@ func TestMergeWithInterfaceURLs(t *testing.T) {
 	}
 }
 
-func TestDetermineCurrent(t *testing.T) {
+func TestCurrentPersistedInYAML(t *testing.T) {
 	t.Parallel()
 
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
 	cfg := NewConfig()
-
-	// Add profiles
 	if err := cfg.AddProfile("work", &Profile{
-		User: UserConfig{
-			Name:  "Work User",
-			Email: "work@example.com",
-		},
+		User: UserConfig{Name: "Work User", Email: "work@example.com"},
 	}); err != nil {
 		t.Fatalf("AddProfile failed: %v", err)
 	}
 
-	if err := cfg.AddProfile("personal", &Profile{
-		User: UserConfig{
-			Name:  "Personal User",
-			Email: "personal@example.com",
-		},
-	}); err != nil {
-		t.Fatalf("AddProfile failed: %v", err)
+	cfg.Current = "work"
+
+	if err := cfg.SaveConfig(configFile); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
 	}
 
-	// determineCurrent is called during LoadConfig, but we can test it indirectly
-	// by checking that Current is empty when no git config matches
-	if cfg.Current != "" {
-		t.Errorf("Current should be empty when no matching git config, got: %s", cfg.Current)
+	loaded, err := LoadConfig(configFile)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if loaded.Current != "work" {
+		t.Errorf("Current not persisted: got %q, want %q", loaded.Current, "work")
 	}
 }
 
-func TestDetermineCurrentDirectly(t *testing.T) {
+func TestLoadConfigEmptyCurrent(t *testing.T) {
 	t.Parallel()
 
+	tmpDir := t.TempDir()
+	configFile := filepath.Join(tmpDir, "config.yaml")
+
 	cfg := NewConfig()
-
-	// Test with no profiles
-	cfg.determineCurrent()
-
-	if cfg.Current != "" {
-		t.Errorf("Current should be empty with no profiles, got: %s", cfg.Current)
+	if err := cfg.AddProfile("work", &Profile{
+		User: UserConfig{Name: "Work User", Email: "work@example.com"},
+	}); err != nil {
+		t.Fatalf("AddProfile failed: %v", err)
 	}
 
-	// Add a profile
-	cfg.Profiles["test"] = &Profile{
-		User: UserConfig{
-			Name:  "Test User",
-			Email: "test@example.com",
-		},
+	if err := cfg.SaveConfig(configFile); err != nil {
+		t.Fatalf("SaveConfig failed: %v", err)
 	}
 
-	// Call determineCurrent - won't match unless git config actually has these values
-	// This tests the code path for non-matching profiles
-	cfg.determineCurrent()
-	// Current will be empty unless the system's actual git config matches
-	// We're just ensuring no panic/error occurs
-
-	// Add multiple profiles to test the matching loop
-	cfg.Profiles["work"] = &Profile{
-		User: UserConfig{
-			Name:  "Work User",
-			Email: "work@example.com",
-		},
-	}
-	cfg.Profiles["personal"] = &Profile{
-		User: UserConfig{
-			Name:  "Personal User",
-			Email: "personal@example.com",
-		},
+	loaded, err := LoadConfig(configFile)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
 	}
 
-	cfg.determineCurrent()
-	// Again, just ensuring the function completes without error
+	if loaded.Current != "" {
+		t.Errorf("Current should be empty when not set, got %q", loaded.Current)
+	}
 }
 
 func TestMergeMapEdgeCases(t *testing.T) {
