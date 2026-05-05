@@ -16,7 +16,15 @@ var rootCmd = &cobra.Command{
 
 Switch between different git identities (work, personal, school, etc.) with a single command.
 Profiles are stored in ~/.config/git-context/config.yaml`,
-	Version: "1.0.0",
+	Version: "dev",
+}
+
+// SetVersion overrides the version reported by `git-context --version`.
+// Called from main with the value goreleaser injects via ldflag.
+func SetVersion(v string) {
+	if v != "" {
+		rootCmd.Version = v
+	}
 }
 
 var initCmd = &cobra.Command{
