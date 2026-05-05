@@ -677,3 +677,40 @@ func TestFlattenIntoRecursesNestedMaps(t *testing.T) {
 		t.Errorf("missing nested bool, got map: %#v", out)
 	}
 }
+
+func TestWriteRootConfigNormalizesBackslashes(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+	rootPath := filepath.Join(tmpDir, ".gitconfig")
+	g := NewGit(rootPath)
+
+	// Simulate Windows-style absolute paths even on POSIX hosts.
+	defaultPath := `C:\Users\runner\AppData\profiles\work.gitconfig`
+	assignments := map[string]string{
+		`C:\Users\runner\Mollie\`: `C:\Users\runner\AppData\profiles\work.gitconfig`,
+	}
+
+	if err := g.WriteRootConfig(defaultPath, assignments); err != nil {
+		t.Fatalf("WriteRootConfig error: %v", err)
+	}
+
+	data, err := os.ReadFile(rootPath)
+	if err != nil {
+		t.Fatalf("ReadFile error: %v", err)
+	}
+
+	content := string(data)
+
+	if strings.Contains(content, `\`) {
+		t.Errorf("manifest contains backslash; git config would reject:\n%s", content)
+	}
+
+	if !strings.Contains(content, "C:/Users/runner/AppData/profiles/work.gitconfig") {
+		t.Errorf("path not slash-normalized:\n%s", content)
+	}
+
+	if !strings.Contains(content, `gitdir:C:/Users/runner/Mollie/`) {
+		t.Errorf("gitdir not slash-normalized:\n%s", content)
+	}
+}
