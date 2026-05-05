@@ -24,16 +24,6 @@ func NewGit(globalConfigPath string) *Git {
 	}
 }
 
-// WriteConfig writes configuration to git global config.
-func (g *Git) WriteConfig(config map[string]any) error {
-	content := buildGitConfig(config)
-	if err := os.WriteFile(g.globalConfigPath, []byte(content), 0o644); err != nil {
-		return errors.Wrap(err, "failed to write git config")
-	}
-
-	return nil
-}
-
 // BackupConfig creates a backup of the git config, but skips the backup
 // when the source is a git-context-generated manifest. The backup exists
 // to preserve the user's pre-migration `~/.gitconfig` on the first
@@ -203,9 +193,10 @@ func (g *Git) removeManagedManifest() error {
 	return nil
 }
 
-// profileToFlatConfig is the same converter that `cmd.profileToGitConfig`
-// uses. Keep them in sync; we host it in the git package because Regenerate
-// needs it without dragging in cmd.
+// profileToFlatConfig converts a Profile struct into the flat dotted-key
+// map (`user.name`, `url "...".insteadOf`, etc.) that buildGitConfig
+// expects. It is the only flatten implementation in the codebase; the
+// pre-refactor cmd-side copy was removed in Task 9.
 func profileToFlatConfig(profile *config.Profile) map[string]any {
 	out := make(map[string]any)
 
