@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/aanogueira/git-context/internal/config"
+	"github.com/techquestsdev/git-context/internal/config"
 	"github.com/cockroachdb/errors"
 )
 
